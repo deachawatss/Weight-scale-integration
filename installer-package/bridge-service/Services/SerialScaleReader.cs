@@ -319,17 +319,21 @@ public sealed class SerialScaleReader : IAsyncDisposable
         // Log raw data received from scale
         _logger.LogDebug("Scale {ScaleId} raw data: {RawData}", _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"));
 
-        var snapshot = ParseWeight(rawData, out var skipped);
-        if (snapshot is not null)
+        var lines = rawData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
         {
-            _logger.LogInformation("Scale {ScaleId} weight parsed: {Weight} {Unit} (stable: {Stable})",
-                _configuration.ScaleId, snapshot.Weight, snapshot.Unit, snapshot.Stable);
-            WeightReceived?.Invoke(this, snapshot);
-        }
-        else if (!skipped)
-        {
-            _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}",
-                _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"));
+            var snapshot = ParseWeight(line, out var skipped);
+            if (snapshot is not null)
+            {
+                _logger.LogInformation("Scale {ScaleId} weight parsed: {Weight} {Unit} (stable: {Stable})",
+                    _configuration.ScaleId, snapshot.Weight, snapshot.Unit, snapshot.Stable);
+                WeightReceived?.Invoke(this, snapshot);
+            }
+            else if (!skipped)
+            {
+                _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}",
+                    _configuration.ScaleId, line.Replace("\r", "\\r").Replace("\n", "\\n"));
+            }
         }
     }
 
@@ -815,7 +819,13 @@ public sealed class SerialScaleReader : IAsyncDisposable
         _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
             _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
 
-        if (int.TryParse(match.Groups["Status"].Value, out var statusCode) && double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
+        var statusStr = match.Groups["Status"].Value;
+        if (statusStr.Contains(';'))
+        {
+            statusStr = statusStr.Replace(';', '0'); // Treat as a neutral status code for positive weight.
+        }
+
+        if (int.TryParse(statusStr, out var statusCode) && double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
         {
             var finalWeight = statusCode == -3 ? -weight : weight;
             var stable = statusCode == 0;
