@@ -15,7 +15,7 @@ namespace PK.BridgeService.Services;
 
 public sealed class SerialScaleReader : IAsyncDisposable
 {
-    private static readonly Regex WeightRegex = new(@"^([-\d]+)\s+([\d]+)\s+([\d]+)", RegexOptions.Compiled);
+        private static readonly Regex ScaleDataRegex = new Regex(@"(?:[-\d;]+\s+\d{4}\s+\d{4}\r?)*([-\d;]+)\s+(\d{4})\s+(\d{4})");
     private readonly ScaleConfiguration _configuration;
     private readonly ScaleServiceOptions _options;
     private readonly ILogger<SerialScaleReader> _logger;
