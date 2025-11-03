@@ -796,7 +796,8 @@ public sealed class SerialScaleReader : IAsyncDisposable
     private ScaleWeightSnapshot? ParseWeight(string rawData, out bool skipped)
     {
         skipped = false;
-        _logger.LogDebug("Scale {ScaleId} RAW data received: {RawData} (Hex: {RawDataHex})", _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
+        _logger.LogInformation("Scale {ScaleId} RAW data received (before regex): '{RawData}' (Length: {Length}, Hex: {RawDataHex})", 
+            _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), rawData.Length, BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
 
         MatchCollection matches = WeightRegex.Matches(rawData);
 
