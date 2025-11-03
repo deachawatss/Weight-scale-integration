@@ -811,6 +811,9 @@ public sealed class SerialScaleReader : IAsyncDisposable
 
         Match match = matches[matches.Count - 1]; // Take the last successful match
 
+        _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
+            _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
+
         if (int.TryParse(match.Groups["Status"].Value, out var statusCode) && double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
         {
             var finalWeight = statusCode == -3 ? -weight : weight;
