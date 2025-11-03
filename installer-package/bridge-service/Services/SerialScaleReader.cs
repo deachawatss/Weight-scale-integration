@@ -15,7 +15,28 @@ namespace PK.BridgeService.Services;
 
 public sealed class SerialScaleReader : IAsyncDisposable
 {
-        private static readonly Regex ScaleDataRegex = new Regex(@"(?:[-\d;]+\s+\d{4}\s+\d{4}\r?)*([-\d;]+)\s+(\d{4})\s+(\d{4})");
+        private static readonly Regex ScaleDataRegex = new Regex(@"^\s*(?<Status>[-\d;]+)\s+(?<Weight1>\d{4})\s+(?<Weight2>\d{4})\s*$");
+
+        private ScaleReading ParseScaleData(string data)
+        {
+            // Example data: "-3   0224  0224" or "-9   0000  0000"
+            // Status: -3 (negative), -9 (positive), -; (positive)
+            // Weight1: 4 digits (e.g., 0224)
+            // Weight2: 4 digits (e.g., 0224) - usually same as Weight1, but sometimes different for stability
+            // The sign of the weight is determined by the status code: -3 indicates negative weight, while other negative status codes (e.g., -9, -1) indicate positive weight.
+
+            MatchCollection matches = ScaleDataRegex.Matches(data);
+
+            if (matches.Count == 0)
+            {
+                _logger.LogWarning("Scale {ScaleName} failed to parse weight from: {Data}", _scaleName, data);
+                return null;
+            }
+
+            Match match = matches[matches.Count - 1]; // Take the last successful match
+
+            // ... rest of the parsing logic
+
     private readonly ScaleConfiguration _configuration;
     private readonly ScaleServiceOptions _options;
     private readonly ILogger<SerialScaleReader> _logger;
