@@ -15,7 +15,7 @@ namespace PK.BridgeService.Services;
 
 public sealed class SerialScaleReader : IAsyncDisposable
 {
-        private static readonly Regex ScaleDataRegex = new Regex(@"\s*(?<Status>[-\d;]+)\s+(?<Weight1>\d{4})\s+(?<Weight2>\d{4})\s*");
+        private static readonly Regex WeightRegex = new Regex(@"\s*(?<Status>[-\d;]+)\s+(?<Weight1>\d{4})\s+(?<Weight2>\d{4})\s*");
 
         private ScaleReading ParseScaleData(string data)
         {
@@ -798,23 +798,32 @@ public sealed class SerialScaleReader : IAsyncDisposable
         skipped = false;
         _logger.LogDebug("Scale {ScaleId} RAW data received: {RawData}", _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"));
 
-        var match = WeightRegex.Match(rawData);
-        if (match.Success)
+        MatchCollection matches = WeightRegex.Matches(rawData);
+
+        if (matches.Count == 0)
         {
-            if (int.TryParse(match.Groups[1].Value, out var statusCode) && double.TryParse(match.Groups[2].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
+            if (_options.VerboseLogging)
             {
-                var finalWeight = statusCode == -3 ? -weight : weight;
-                var stable = statusCode == 0;
+                _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}", _configuration.ScaleId, rawData);
+            }
+            return null;
+        }
 
-                var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
-                var weightInKg = ConvertToKilograms(finalWeight, unit);
+        Match match = matches[matches.Count - 1]; // Take the last successful match
 
-                var timestampUtc = DateTime.UtcNow;
-                var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
-                if (snapshot is not null)
-                {
-                    return snapshot;
-                }
+        if (int.TryParse(match.Groups["Status"].Value, out var statusCode) && double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
+        {
+            var finalWeight = statusCode == -3 ? -weight : weight;
+            var stable = statusCode == 0;
+
+            var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
+            var weightInKg = ConvertToKilograms(finalWeight, unit);
+
+            var timestampUtc = DateTime.UtcNow;
+            var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
+            if (snapshot is not null)
+            {
+                return snapshot;
             }
         }
 
