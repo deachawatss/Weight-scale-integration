@@ -17,7 +17,10 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 builder.Host.UseWindowsService();
 
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
+builder.Logging.AddConsole(options =>
+{
+    options.LogToStandardErrorThreshold = LogLevel.Debug; // Log debug messages to stderr
+});
 builder.Logging.SetMinimumLevel(LogLevel.Debug);  // Show all logs for debugging
 
 static int GetInt(string? value, int fallback)
