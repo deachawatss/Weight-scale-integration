@@ -18,7 +18,7 @@ builder.Host.UseWindowsService();
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(LogLevel.Information);  // Show only important logs (info, warning, error)
+builder.Logging.SetMinimumLevel(LogLevel.Debug);  // Show all logs for debugging
 
 static int GetInt(string? value, int fallback)
     => int.TryParse(value, out var parsed) ? parsed : fallback;
