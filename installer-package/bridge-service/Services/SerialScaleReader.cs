@@ -1604,10 +1604,9 @@ public sealed class SerialScaleReader : IAsyncDisposable
         _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
             _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
 
-        var statusStr = match.Groups["Status"].Value;
-        bool isNegative = statusStr.Contains('-');
-        bool isStable = statusStr.Contains(';'); // Assuming ';' indicates stable
-
+            var statusStr = match.Groups["Status"].Value;
+            bool isNegative = statusStr.Contains('-') || (_configuration.ScaleType == "BIG" && statusStr.Contains(','));
+            bool isStable = statusStr.Contains(';'); // Assuming ';' indicates stable
         if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
         {
             var finalWeight = isNegative ? -weight : weight;
