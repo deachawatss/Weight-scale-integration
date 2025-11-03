@@ -127,6 +127,7 @@ public class WindowsServiceInstaller
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "bridge-service"), // Two levels up
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "apps", "bridge-service", "bin", "Release", "net8.0", "win-x64", "publish"), // Self-contained publish output
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "apps", "bridge-service"), // Project structure (fallback)
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "bridge-service-temp"), // Added for build output
             @"C:\PK\BridgeService", // Absolute fallback path
         };
 
