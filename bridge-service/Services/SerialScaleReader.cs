@@ -778,7 +778,10 @@ public sealed class SerialScaleReader : IAsyncDisposable
         _logger.LogInformation("Scale {ScaleId} RAW data received (before regex): '{RawData}' (Length: {Length}, Hex: {RawDataHex})", 
             _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), rawData.Length, BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
 
-        MatchCollection matches = WeightRegex.Matches(rawData);
+
+                _logger.LogInformation("[DEBUG] cleanLine: '{CleanLine}'", cleanLine);
+                var match = _weightRegex.Match(cleanLine);
+
 
         if (matches.Count == 0)
         {
