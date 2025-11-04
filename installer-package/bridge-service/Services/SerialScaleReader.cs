@@ -373,7 +373,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
             throw new TimeoutException($"No response from scale after {_options.SerialReadTimeoutMilliseconds}ms");
         }
 
-        return buffer.ToString().Trim();
+        return buffer.ToString();
     }
 
     private void HandleConsecutiveFailures()
