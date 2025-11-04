@@ -1,3 +1,4 @@
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -15,7 +16,7 @@ namespace PK.BridgeService.Services;
 
 public sealed class SerialScaleReader : IAsyncDisposable
 {
-    private static readonly Regex WeightRegex = new Regex(@"(?:[-\\d;]+\\s+\\d{4}\\s+\\d{4}\\r?)*(?<Status>[-\\d;]+)\\s+(?<Weight1>\\d{4})\\s+(?<Weight2>\\d{4})");
+    private static readonly Regex WeightRegex = new Regex(@"^\s*(?<Status>[-\d,;]+)\s+(?<Weight1>\d+)\s+(?<Weight2>\d+)\s*$");
     private readonly ScaleConfiguration _configuration;
     private readonly ScaleServiceOptions _options;
     private readonly ILogger<SerialScaleReader> _logger;
@@ -373,7 +374,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
             throw new TimeoutException($"No response from scale after {_options.SerialReadTimeoutMilliseconds}ms");
         }
 
-        return buffer.ToString().Trim();
+        return buffer.ToString();
     }
 
     private void HandleConsecutiveFailures()
@@ -787,7 +788,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
                 cleanLine = cleanLine.Substring(1);
             }
 
-            _logger.LogInformation("[DEBUG] cleanLine: '{CleanLine}'", cleanLine);
+            _logger.LogInformation("[DEBUG] cleanLine: '{{CleanLine}}'", cleanLine);
             var match = WeightRegex.Match(cleanLine);
 
             if (match.Success)
@@ -799,7 +800,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
                 bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
                 bool isStable = statusStr.Contains(';');
 
-                _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
+                _logger.LogInformation($"[DEBUG] Status: {{statusStr}}, isNegative: {{isNegative}}, isStable: {{isStable}}");
 
                 if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
                 {
@@ -940,7 +941,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
         // Debug: Log when parsing negative values
         if (success && value < 0)
         {
-            Console.WriteLine($"[DEBUG] TryParseNumericField: field='{field}' → sanitized='{sanitized}' → parsed value={value}");
+            Console.WriteLine($"[DEBUG] TryParseNumericField: field='{{field}}' → sanitized='{{sanitized}}' → parsed value={{value}}");
         }
 
         return success;
