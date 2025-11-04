@@ -788,7 +788,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
                 cleanLine = cleanLine.Substring(1);
             }
 
-            _logger.LogInformation("[DEBUG] cleanLine: '{{CleanLine}}'", cleanLine);
+            _logger.LogInformation("[DEBUG] cleanLine: {CleanLine}", cleanLine);
             var match = WeightRegex.Match(cleanLine);
 
             if (match.Success)
@@ -800,7 +800,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
                 bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
                 bool isStable = statusStr.Contains(';');
 
-                _logger.LogInformation($"[DEBUG] Status: {{statusStr}}, isNegative: {{isNegative}}, isStable: {{isStable}}");
+                _logger.LogInformation("[DEBUG] Status: {Status}, isNegative: {IsNegative}, isStable: {IsStable}", statusStr, isNegative, isStable);
 
                 if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
                 {
