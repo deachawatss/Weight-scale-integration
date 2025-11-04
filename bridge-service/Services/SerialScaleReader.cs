@@ -778,45 +778,45 @@ public sealed class SerialScaleReader : IAsyncDisposable
         _logger.LogInformation("Scale {ScaleId} RAW data received (before regex): '{RawData}' (Length: {Length}, Hex: {RawDataHex})", 
             _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), rawData.Length, BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
 
-
-                _logger.LogInformation("[DEBUG] cleanLine: '{CleanLine}'", cleanLine);
-                var match = _weightRegex.Match(cleanLine);
-
-
-        if (matches.Count == 0)
+        var lines = rawData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
         {
-            if (_options.VerboseLogging)
+            var cleanLine = line.Trim();
+            if (cleanLine.Length > 0 && cleanLine[0] == '\x02')
             {
-                _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}", _configuration.ScaleId, rawData);
+                cleanLine = cleanLine.Substring(1);
             }
-            return null;
-        }
 
-        Match match = matches[matches.Count - 1]; // Take the last successful match
+            _logger.LogInformation("[DEBUG] cleanLine: '{CleanLine}'", cleanLine);
+            var match = WeightRegex.Match(cleanLine);
 
-        _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
-            _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
-
-        var statusStr = match.Groups["Status"].Value.Trim();
-        bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
-        bool isStable = statusStr.Contains(';');
-
-        _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
-
-        if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
-        {
-            var finalWeight = isNegative ? -weight : weight;
-            var stable = isStable;
-
-            var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
-            var weightInKg = ConvertToKilograms(finalWeight, unit);
-
-            var timestampUtc = DateTime.UtcNow;
-            var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
-            skipped = filtered; // Update the out parameter
-            if (snapshot is not null)
+            if (match.Success)
             {
-                return snapshot;
+                _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
+                    _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
+
+                var statusStr = match.Groups["Status"].Value.Trim();
+                bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
+                bool isStable = statusStr.Contains(';');
+
+                _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
+
+                if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
+                {
+                    var finalWeight = isNegative ? -weight : weight;
+                    var stable = isStable;
+
+                    var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
+                    var weightInKg = ConvertToKilograms(finalWeight, unit);
+
+                    var timestampUtc = DateTime.UtcNow;
+                    var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
+                    skipped = filtered; // Update the out parameter
+                    if (snapshot is not null)
+                    {
+                        return snapshot;
+                    }
+                }
             }
         }
 
