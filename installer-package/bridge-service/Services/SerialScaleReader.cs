@@ -778,48 +778,44 @@ public sealed class SerialScaleReader : IAsyncDisposable
         _logger.LogInformation("Scale {ScaleId} RAW data received (before regex): '{RawData}' (Length: {Length}, Hex: {RawDataHex})", 
             _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), rawData.Length, BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
 
-        MatchCollection matches = WeightRegex.Matches(rawData);
-
-        if (matches.Count == 0)
+        var lines = rawData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines.Reverse())
         {
-            if (_options.VerboseLogging)
+            Match match = WeightRegex.Match(line);
+
+            if (match.Success)
             {
-                _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}", _configuration.ScaleId, rawData);
-            }
-            return null;
-        }
+                _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
+                    _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
 
-        Match match = matches[matches.Count - 1]; // Take the last successful match
+                var statusStr = match.Groups["Status"].Value.Trim();
+                bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
+                bool isStable = statusStr.Contains(';');
 
-        _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
-            _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
+                _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
 
-        var statusStr = match.Groups["Status"].Value.Trim();
-        bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
-        bool isStable = statusStr.Contains(';');
+                if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
+                {
+                    var finalWeight = isNegative ? -weight : weight;
+                    var stable = isStable;
 
-        _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
+                    var unit = DetectUnit(line) ?? _options.DefaultUnit;
+                    var weightInKg = ConvertToKilograms(finalWeight, unit);
 
-        if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
-        {
-            var finalWeight = isNegative ? -weight : weight;
-            var stable = isStable;
-
-            var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
-            var weightInKg = ConvertToKilograms(finalWeight, unit);
-
-            var timestampUtc = DateTime.UtcNow;
-            var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
-            skipped = filtered; // Update the out parameter
-            if (snapshot is not null)
-            {
-                return snapshot;
+                    var timestampUtc = DateTime.UtcNow;
+                    var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
+                    skipped = filtered; // Update the out parameter
+                    if (snapshot is not null)
+                    {
+                        return snapshot;
+                    }
+                }
             }
         }
 
         if (_options.VerboseLogging)
         {
-            _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}", _configuration.ScaleId, rawData);
+            _logger.LogWarning("Scale {ScaleId} failed to parse weight from any line in: {RawData}", _configuration.ScaleId, rawData);
         }
 
         return null;
