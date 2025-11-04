@@ -804,7 +804,7 @@ private static bool TryParseComPort(string? portName, out int number)
             _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
 
             var statusStr = match.Groups["Status"].Value;
-            bool isNegative = statusStr.Contains('-') || (_configuration.ScaleType == "BIG" && statusStr.Contains(','));
+            bool isNegative = (statusStr.Contains('-') || (_configuration.ScaleType == "BIG" && statusStr.Contains(','))) && !statusStr.Contains(';');
             bool isStable = statusStr.Contains(';'); // Assuming ';' indicates stable
         if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
         {
