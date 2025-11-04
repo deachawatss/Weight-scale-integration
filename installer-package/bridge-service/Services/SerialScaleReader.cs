@@ -781,7 +781,13 @@ public sealed class SerialScaleReader : IAsyncDisposable
         var lines = rawData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var line in lines.Reverse())
         {
-            Match match = WeightRegex.Match(line);
+            var cleanLine = line.Trim();
+            if (cleanLine.Length > 0 && cleanLine[0] == '\x02')
+            {
+                cleanLine = cleanLine.Substring(1);
+            }
+
+            Match match = WeightRegex.Match(cleanLine);
 
             if (match.Success)
             {
@@ -799,7 +805,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
                     var finalWeight = isNegative ? -weight : weight;
                     var stable = isStable;
 
-                    var unit = DetectUnit(line) ?? _options.DefaultUnit;
+                    var unit = DetectUnit(cleanLine) ?? _options.DefaultUnit;
                     var weightInKg = ConvertToKilograms(finalWeight, unit);
 
                     var timestampUtc = DateTime.UtcNow;
