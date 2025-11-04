@@ -15,7 +15,7 @@ namespace PK.BridgeService.Services;
 
 public sealed class SerialScaleReader : IAsyncDisposable
 {
-        private static readonly Regex ScaleDataRegex = new Regex(@"(?:[-\d;]+\s+\d{4}\s+\d{4}\r?)*([-\d;]+)\s+(\d{4})\s+(\d{4})");
+    private static readonly Regex WeightRegex = new Regex(@"(?:[-\\d;]+\\s+\\d{4}\\s+\\d{4}\\r?)*(?<Status>[-\\d;]+)\\s+(?<Weight1>\\d{4})\\s+(?<Weight2>\\d{4})");
     private readonly ScaleConfiguration _configuration;
     private readonly ScaleServiceOptions _options;
     private readonly ILogger<SerialScaleReader> _logger;
@@ -775,26 +775,45 @@ public sealed class SerialScaleReader : IAsyncDisposable
     private ScaleWeightSnapshot? ParseWeight(string rawData, out bool skipped)
     {
         skipped = false;
-        _logger.LogDebug("Scale {ScaleId} RAW data received: {RawData}", _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"));
+        _logger.LogInformation("Scale {ScaleId} RAW data received (before regex): '{RawData}' (Length: {Length}, Hex: {RawDataHex})", 
+            _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), rawData.Length, BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
 
-            var statusStr = match.Groups["Status"].Value;
-            bool isNegative = (statusStr.Contains('-') || (_configuration.ScaleType == "BIG" && statusStr.Contains(','))) && !statusStr.Contains(';');
-            bool isStable = statusStr.Contains(';'); // Assuming ';' indicates stable
-            _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
-        if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
+        MatchCollection matches = WeightRegex.Matches(rawData);
+
+        if (matches.Count == 0)
+        {
+            if (_options.VerboseLogging)
             {
-                var finalWeight = statusCode == -3 ? -weight : weight;
-                var stable = statusCode == 0;
+                _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}", _configuration.ScaleId, rawData);
+            }
+            return null;
+        }
 
-                var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
-                var weightInKg = ConvertToKilograms(finalWeight, unit);
+        Match match = matches[matches.Count - 1]; // Take the last successful match
 
-                var timestampUtc = DateTime.UtcNow;
-                var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
-                if (snapshot is not null)
-                {
-                    return snapshot;
-                }
+        _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
+            _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
+
+        var statusStr = match.Groups["Status"].Value.Trim();
+        bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
+        bool isStable = statusStr.Contains(';');
+
+        _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
+
+        if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
+        {
+            var finalWeight = isNegative ? -weight : weight;
+            var stable = isStable;
+
+            var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
+            var weightInKg = ConvertToKilograms(finalWeight, unit);
+
+            var timestampUtc = DateTime.UtcNow;
+            var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
+            skipped = filtered; // Update the out parameter
+            if (snapshot is not null)
+            {
+                return snapshot;
             }
         }
 
