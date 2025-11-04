@@ -217,20 +217,25 @@ builder.Services.AddSingleton<ScaleConfigurationService>();
 builder.Services.AddSingleton<ScaleBroadcastService>();
 builder.Services.AddHostedService<ScalePollingHostedService>();
 
+// Add CORS services
+var allowedOrigins = GetConfig("Cors:AllowedOrigins", "CORS_ALLOWED_ORIGINS")
+    ?? "http://localhost:6060,http://127.0.0.1:6060,http://192.168.0.11:6060";
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", builder =>
+    options.AddDefaultPolicy(policy =>
     {
-        builder.AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader();
+        policy.WithOrigins(allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries))
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials(); // Important for WebSocket connections
     });
 });
 
 var app = builder.Build();
 
-app.UseCors("AllowAll");
-
+// Use CORS middleware (must be before UseWebSockets)
+app.UseCors();
 app.UseWebSockets();
 
 app.MapGet("/", () => Results.Ok(new
