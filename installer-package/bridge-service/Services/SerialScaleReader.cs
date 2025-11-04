@@ -1,5 +1,3 @@
-
-
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -17,10 +15,7 @@ namespace PK.BridgeService.Services;
 
 public sealed class SerialScaleReader : IAsyncDisposable
 {
-        private static readonly Regex WeightRegex = new Regex(@"\s*(?<Status>[-\d;,]+)\s+(?<Weight1>\d+)\s+(?<Weight2>\d+)\s*");
-
-
-
+        private static readonly Regex ScaleDataRegex = new Regex(@"(?:[-\d;]+\s+\d{4}\s+\d{4}\r?)*([-\d;]+)\s+(\d{4})\s+(\d{4})");
     private readonly ScaleConfiguration _configuration;
     private readonly ScaleServiceOptions _options;
     private readonly ILogger<SerialScaleReader> _logger;
@@ -303,21 +298,17 @@ public sealed class SerialScaleReader : IAsyncDisposable
         // Log raw data received from scale
         _logger.LogDebug("Scale {ScaleId} raw data: {RawData}", _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"));
 
-        var lines = rawData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var line in lines)
+        var snapshot = ParseWeight(rawData, out var skipped);
+        if (snapshot is not null)
         {
-            var snapshot = ParseWeight(line, out var skipped);
-            if (snapshot is not null)
-            {
-                _logger.LogInformation("Scale {ScaleId} weight parsed: {Weight} {Unit} (stable: {Stable})",
-                    _configuration.ScaleId, snapshot.Weight, snapshot.Unit, snapshot.Stable);
-                WeightReceived?.Invoke(this, snapshot);
-            }
-            else if (!skipped)
-            {
-                _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}",
-                    _configuration.ScaleId, line.Replace("\r", "\\r").Replace("\n", "\\n"));
-            }
+            _logger.LogInformation("Scale {ScaleId} weight parsed: {Weight} {Unit} (stable: {Stable})",
+                _configuration.ScaleId, snapshot.Weight, snapshot.Unit, snapshot.Stable);
+            WeightReceived?.Invoke(this, snapshot);
+        }
+        else if (!skipped)
+        {
+            _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}",
+                _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"));
         }
     }
 
@@ -734,7 +725,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
         _portDiscoveryLogged = true;
     }
 
-private static bool TryParseComPort(string? portName, out int number)
+    private static bool TryParseComPort(string? portName, out int number)
     {
         number = default;
         if (string.IsNullOrWhiteSpace(portName))
@@ -784,42 +775,26 @@ private static bool TryParseComPort(string? portName, out int number)
     private ScaleWeightSnapshot? ParseWeight(string rawData, out bool skipped)
     {
         skipped = false;
-        _logger.LogInformation("Scale {ScaleId} RAW data received (before regex): '{RawData}' (Length: {Length}, Hex: {RawDataHex})", 
-            _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), rawData.Length, BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
-
-        MatchCollection matches = WeightRegex.Matches(rawData);
-
-        if (matches.Count == 0)
-        {
-            if (_options.VerboseLogging)
-            {
-                _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}", _configuration.ScaleId, rawData);
-            }
-            return null;
-        }
-
-        Match match = matches[matches.Count - 1]; // Take the last successful match
-
-        _logger.LogDebug("Scale {ScaleId} Regex Match - Status: {Status}, Weight1: {Weight1}, Weight2: {Weight2}",
-            _configuration.ScaleId, match.Groups["Status"].Value, match.Groups["Weight1"].Value, match.Groups["Weight2"].Value);
+        _logger.LogDebug("Scale {ScaleId} RAW data received: {RawData}", _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"));
 
             var statusStr = match.Groups["Status"].Value;
             bool isNegative = (statusStr.Contains('-') || (_configuration.ScaleType == "BIG" && statusStr.Contains(','))) && !statusStr.Contains(';');
             bool isStable = statusStr.Contains(';'); // Assuming ';' indicates stable
+            _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
         if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
-        {
-            var finalWeight = isNegative ? -weight : weight;
-            var stable = isStable;
-
-            var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
-            var weightInKg = ConvertToKilograms(finalWeight, unit);
-
-            var timestampUtc = DateTime.UtcNow;
-            var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
-            skipped = filtered; // Update the out parameter
-            if (snapshot is not null)
             {
-                return snapshot;
+                var finalWeight = statusCode == -3 ? -weight : weight;
+                var stable = statusCode == 0;
+
+                var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
+                var weightInKg = ConvertToKilograms(finalWeight, unit);
+
+                var timestampUtc = DateTime.UtcNow;
+                var snapshot = BuildSnapshot(weightInKg, stable, unit, timestampUtc, out var filtered);
+                if (snapshot is not null)
+                {
+                    return snapshot;
+                }
             }
         }
 
@@ -866,8 +841,7 @@ private static bool TryParseComPort(string? portName, out int number)
         _lastReadingTimestampUtc = timestampUtc;
 
         var resolvedUnit = string.IsNullOrWhiteSpace(unit) ? _options.DefaultUnit : unit;
-        int decimalPlaces = _configuration.ScaleType == "SMALL" ? 3 : 2; // Determine decimal places based on ScaleType
-        var displayWeight = Math.Round(ConvertFromKilograms(roundedWeightKg, resolvedUnit), decimalPlaces);
+        var displayWeight = Math.Round(ConvertFromKilograms(roundedWeightKg, resolvedUnit), 4);
 
         _logger.LogInformation(
             "Scale {ScaleId} BROADCAST: weightKg={WeightKg} → displayWeight={DisplayWeight} {Unit} stable={Stable} (WebSocket will send this value)",
