@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -16,7 +15,7 @@ namespace PK.BridgeService.Services;
 
 public sealed class SerialScaleReader : IAsyncDisposable
 {
-    private static readonly Regex WeightRegex = new Regex(@"^\s*(?<Status>[-\d,;]+)\s+(?<Weight1>\d+)\s+(?<Weight2>\d+)\s*$");
+    private static readonly Regex WeightRegex = new Regex(@"^\x02?\s*(?<Status>[-\d,;]+)\s+(?<Weight1>\d+)\s+(?<Weight2>\d+)\s*");
     private readonly ScaleConfiguration _configuration;
     private readonly ScaleServiceOptions _options;
     private readonly ILogger<SerialScaleReader> _logger;
@@ -780,7 +779,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
             _configuration.ScaleId, rawData.Replace("\r", "\\r").Replace("\n", "\\n"), rawData.Length, BitConverter.ToString(System.Text.Encoding.Default.GetBytes(rawData)));
 
         var lines = rawData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var line in lines)
+        foreach (var line in lines.Reverse())
         {
             var cleanLine = line.Trim();
             if (cleanLine.Length > 0 && cleanLine[0] == '\x02')
@@ -788,8 +787,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
                 cleanLine = cleanLine.Substring(1);
             }
 
-            _logger.LogInformation("[DEBUG] cleanLine: {CleanLine}", cleanLine);
-            var match = WeightRegex.Match(cleanLine);
+            Match match = WeightRegex.Match(cleanLine);
 
             if (match.Success)
             {
@@ -800,14 +798,14 @@ public sealed class SerialScaleReader : IAsyncDisposable
                 bool isNegative = statusStr == "-3" || (_configuration.ScaleType == "BIG" && statusStr == ",3");
                 bool isStable = statusStr.Contains(';');
 
-                _logger.LogInformation("[DEBUG] Status: {Status}, isNegative: {IsNegative}, isStable: {IsStable}", statusStr, isNegative, isStable);
+                _logger.LogInformation($"[DEBUG] Status: {statusStr}, isNegative: {isNegative}, isStable: {isStable}");
 
                 if (double.TryParse(match.Groups["Weight1"].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
                 {
                     var finalWeight = isNegative ? -weight : weight;
                     var stable = isStable;
 
-                    var unit = DetectUnit(rawData) ?? _options.DefaultUnit;
+                    var unit = DetectUnit(cleanLine) ?? _options.DefaultUnit;
                     var weightInKg = ConvertToKilograms(finalWeight, unit);
 
                     var timestampUtc = DateTime.UtcNow;
@@ -823,7 +821,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
 
         if (_options.VerboseLogging)
         {
-            _logger.LogWarning("Scale {ScaleId} failed to parse weight from: {RawData}", _configuration.ScaleId, rawData);
+            _logger.LogWarning("Scale {ScaleId} failed to parse weight from any line in: {RawData}", _configuration.ScaleId, rawData);
         }
 
         return null;
@@ -941,7 +939,7 @@ public sealed class SerialScaleReader : IAsyncDisposable
         // Debug: Log when parsing negative values
         if (success && value < 0)
         {
-            Console.WriteLine($"[DEBUG] TryParseNumericField: field='{{field}}' → sanitized='{{sanitized}}' → parsed value={{value}}");
+            Console.WriteLine($"[DEBUG] TryParseNumericField: field='{field}' → sanitized='{sanitized}' → parsed value={value}");
         }
 
         return success;
